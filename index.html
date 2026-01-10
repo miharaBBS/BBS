@@ -8,7 +8,7 @@
     <link rel="apple-touch-icon" href="logo2.png">
     <style>
         body { font-family: sans-serif; margin: 0; padding: 0; background-color: #dcdcdc; display: flex; flex-direction: column; min-height: 100vh; color: #333; }
-        .container { max-width: 900px; margin: 0 auto; background-color: #fff; flex: 1; padding: 10px; box-sizing: border-box; width: 100%; display: flex; flex-direction: column; }
+        .container { max-width: 900px; margin: 0 auto; background-color: #fff; flex: 1; padding: 10px; box-sizing: border-box; width: 100%; display: flex; flex-direction: column; position: relative; }
         input[type="text"], input[type="file"], input[type="password"], textarea { 
             width: 100%; box-sizing: border-box; padding: 10px; margin: 5px 0; font-size: 16px !important; 
         }
@@ -39,7 +39,7 @@
         .hidden { display: none; }
         .anchor { color: #0047bd; text-decoration: underline; cursor: pointer; }
         .auto-link { color: #0047bd; text-decoration: underline; word-break: break-all; }
-        .inner-footer { text-align: center; padding: 20px 10px; border-top: 1px solid #eee; font-size: 0.75em; color: #666; background-color: #fff; margin-top: auto; }
+        .inner-footer { text-align: center; padding: 20px 10px; border-top: 1px solid #eee; font-size: 0.75em; color: #666; background-color: #fff; margin-top: auto; width: 100%; box-sizing: border-box; }
         .footer-banner { width: 200px; height: auto; min-height: 40px; display: block; margin: 10px auto 10px; border: 1px solid #ccc; }
         .thread-nav-bar { position: sticky; top: 0; background-color: #fff; padding: 10px 0; z-index: 100; display: flex; gap: 8px; border-bottom: 1px solid #ccc; margin-bottom: 10px; }
         @media (min-width: 600px) { .container { padding: 20px; } .thread-header { flex-direction: row; } }
@@ -69,16 +69,6 @@
             </div>
             
             <div id="board-portal"></div>
-            
-            <div class="inner-footer">
-                当サイトはリンクフリーです、バナーはご自由にお使いください。<br>
-                <img src="banner.png" alt="mihara BBSバナー" class="footer-banner">
-                <div style="margin-top: 10px;">
-                    <span id="admin-indicator" style="font-size: 0.8em; color: #aaa;">一般ユーザーモード</span><br>
-                    <input type="password" id="admin-pass" placeholder="pass" style="width: 100px; padding: 4px; font-size: 12px !important; border: 1px solid #ddd;">
-                    <button onclick="loginAdmin()" style="font-size: 11px; padding: 4px 8px; cursor: pointer;">Login</button>
-                </div>
-            </div>
         </div>
 
         <div id="index-view" class="hidden">
@@ -119,6 +109,16 @@
                 <button id="btn-submit-thread" class="nav-btn" onclick="submitNewThread()" disabled>同意して作成</button>
                 <button class="nav-btn" onclick="cancelNewThread()" style="background:#666; margin-left: 10px;">戻る</button>
             </div>
+        </div>
+    </div>
+
+    <div id="global-footer" class="inner-footer">
+        当サイトはリンクフリーです、バナーはご自由にお使いください。<br>
+        <img src="banner.png" alt="mihara BBSバナー" class="footer-banner">
+        <div style="margin-top: 10px;">
+            <span id="admin-indicator" style="font-size: 0.8em; color: #aaa;">一般ユーザーモード</span><br>
+            <input type="password" id="admin-pass" placeholder="pass" style="width: 100px; padding: 4px; font-size: 12px !important; border: 1px solid #ddd;">
+            <button onclick="loginAdmin()" style="font-size: 11px; padding: 4px 8px; cursor: pointer;">Login</button>
         </div>
     </div>
 </div>
@@ -204,6 +204,7 @@
         document.getElementById('portal-view').classList.add('hidden'); 
         document.getElementById('index-view').classList.remove('hidden'); 
         document.getElementById('thread-view').classList.add('hidden'); 
+        document.getElementById('global-footer').classList.add('hidden'); // フッター隠す
         document.getElementById('current-board-name').innerText = name + "板"; 
         document.getElementById('board-description-area').innerText = BOARD_INFO[name]; 
         document.getElementById('new-name').placeholder = isAdmin ? "三原" : DEFAULT_NAMES[name]; 
@@ -212,8 +213,10 @@
 
     function showPortal() { 
         document.getElementById('portal-view').classList.remove('hidden'); 
+        document.getElementById('global-footer').classList.remove('hidden'); // フッター表示
         document.getElementById('index-view').classList.add('hidden'); 
         document.getElementById('thread-view').classList.add('hidden');
+        document.getElementById('confirm-view').classList.add('hidden');
     }
 
     function renderIndex() {
@@ -243,6 +246,7 @@
         currentThreadKey = key; 
         document.getElementById('index-view').classList.add('hidden'); 
         document.getElementById('thread-view').classList.remove('hidden'); 
+        document.getElementById('global-footer').classList.add('hidden'); // フッター隠す
         document.getElementById('view-title').innerText = filterWords(title); 
         db.ref('boards/' + currentBoard + '/' + key + '/posts').on('value', renderResponses);
         updatePostArea(); 
@@ -258,7 +262,7 @@
             const num = i + 1;
             const div = document.createElement('div');
             div.className = "res-item";
-            div.id = `res-${num}`; // アンカー移動用のID
+            div.id = `res-${num}`;
             const nameClass = p.name === "三原" ? "name admin-name" : "name";
             div.innerHTML = `
                 <div class="info">${num} ：<span class="${nameClass}">${p.name}</span> ：${p.date} <b>${p.id}</b></div>
@@ -277,21 +281,20 @@
         if (!area || !btn) return;
         checkCharLimit('res-content', 'res-char-info');
         
-        // すでにタイマーが動いている（投稿待ち）なら何もしない
-        if (postTimer) return;
-
         if (area.value.length === 0) { 
             btn.disabled = true;
             label.innerText = "本文を入力してください"; 
+            clearInterval(countdownInterval);
+            countdownInterval = null;
             return; 
         }
 
-        // 入力があったらカウントダウン開始
+        if (countdownInterval) return;
+
         let sec = 3;
         btn.disabled = true;
         label.innerText = `あと${sec}秒で投稿可能`;
         
-        clearInterval(countdownInterval);
         countdownInterval = setInterval(() => {
             sec--;
             if (sec > 0) {
@@ -300,12 +303,9 @@
                 label.innerText = "投稿可能";
                 btn.disabled = false;
                 clearInterval(countdownInterval);
+                countdownInterval = null;
             }
         }, 1000);
-
-        postTimer = setTimeout(() => {
-            postTimer = null;
-        }, 3000);
     }
 
     async function postResponse() {
@@ -315,7 +315,7 @@
         const time = new Date().toLocaleString();
         const file = document.getElementById('res-file').files[0];
 
-        btn.disabled = true; // 連続投稿防止
+        btn.disabled = true;
 
         const save = (imgData) => {
             db.ref('boards/' + currentBoard + '/' + currentThreadKey + '/posts').push({ name, date: time, id: myId, body, img: imgData || "", deleted: false });
@@ -341,14 +341,13 @@
             document.getElementById('index-view').classList.add('hidden');
             document.getElementById('confirm-view').classList.remove('hidden');
             let sec = 5; 
-            const tMsg = document.getElementById('timer-msg');
             const bSub = document.getElementById('btn-submit-thread');
             bSub.disabled = true;
-            tMsg.innerText = `あと ${sec} 秒`;
+            document.getElementById('timer-msg').innerText = `あと ${sec} 秒`;
             const timer = setInterval(() => { 
                 sec--; 
-                tMsg.innerText = `あと ${sec} 秒`; 
-                if(sec <= 0) { clearInterval(timer); bSub.disabled = false; tMsg.innerText = "投稿できます"; } 
+                document.getElementById('timer-msg').innerText = `あと ${sec} 秒`; 
+                if(sec <= 0) { clearInterval(timer); bSub.disabled = false; document.getElementById('timer-msg').innerText = "投稿できます"; } 
             }, 1000);
         };
         if(file) { const r = new FileReader(); r.onload = (e) => proceed(e.target.result); r.readAsDataURL(file); } else proceed("");
