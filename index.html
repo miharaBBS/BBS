@@ -114,11 +114,15 @@
         messagingSenderId: "70498873463",
         appId: "1:70498873463:web:bb9f97221ab57c5565d672",
         measurementId: "G-PQSF4BHCT0",
-        // ここを以下の「新しいURL形式」に書き換えてください
+        // アジア・シンガポールサーバーの正しいURLを設定
         databaseURL: "https://mihara-bbs-cac0e-default-rtdb.asia-southeast1.firebasedatabase.app"
     };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+
+    let db;
+    try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.database();
+    } catch (e) { console.error("Firebase初期化失敗:", e); }
 
     const BOARD_INFO = {
         '雑談': '雑談する板です。雑にしゃべって下さい。',
@@ -129,7 +133,7 @@
     const DEFAULT_NAMES = { '雑談': '名無しの人', 'AA絵一次': '（　´∀｀）', 'AA絵二次': '(´・ω・)', 'YMM4': '名無し饅頭' };
     const MAX_CHARS = 3000, MAX_TITLE = 50, EXPIRE_TIME = 12 * 60 * 60 * 1000;
     
-    let currentBoard = "", currentThreadKey = null, pendingThread = null, postTimer = null, countdownInterval = null, myId = "";
+    let currentBoard = "", currentThreadKey = null, pendingThread = null, myId = "";
 
     function init() {
         if (!sessionStorage.getItem('user_id')) sessionStorage.setItem('user_id', "ID:" + Math.random().toString(36).substring(2, 10).toUpperCase());
@@ -159,7 +163,6 @@
             div.innerHTML = `<h2>${name}板</h2>`; 
             portal.appendChild(div); 
         }); 
-        document.getElementById('global-footer').classList.remove('hidden');
     }
 
     function openBoard(name) { 
@@ -176,7 +179,7 @@
     }
 
     function showPortal() { 
-        db.ref('boards/' + currentBoard).off();
+        if(db) db.ref('boards/' + currentBoard).off();
         document.getElementById('portal-view').classList.remove('hidden'); 
         document.getElementById('index-view').classList.add('hidden'); 
         document.getElementById('thread-view').classList.add('hidden'); 
@@ -185,6 +188,7 @@
 
     function renderIndex() {
         const container = document.getElementById('thread-list-container');
+        if(!db) return;
         const boardRef = db.ref('boards/' + currentBoard);
         boardRef.off(); 
         boardRef.on('value', (snapshot) => {
@@ -194,11 +198,8 @@
                 container.innerHTML = "<div style='text-align:center; padding:20px; color:#666;'>まだスレッドがありません。</div>";
                 return;
             }
-            const threads = Object.keys(data).map(key => ({
-                ...data[key],
-                key: key
-            })).sort((a, b) => new Date(b.lastUpdate) - new Date(a.lastUpdate));
-
+            const threads = Object.keys(data).map(key => ({ ...data[key], key: key }))
+                                  .sort((a, b) => new Date(b.lastUpdate) - new Date(a.lastUpdate));
             threads.forEach(th => {
                 const posts = Object.values(th.posts || {});
                 const lastPost = posts[posts.length - 1] || { body: "" };
@@ -208,8 +209,6 @@
                 div.innerHTML = `<div class="thread-header"><h3 style="color:red;margin:0;font-size:1.1em;">${filterWords(th.title)}</h3><div class="thread-meta">${posts.length}レス | ${th.lastUpdate}</div></div><div class="thread-desc">${filterWords(lastPost.body.substring(0,40))}...</div>`;
                 container.appendChild(div);
             });
-        }, (error) => {
-            container.innerHTML = "<div style='color:red;'>データの読み込みに失敗しました。ルールの設定を確認してください。</div>";
         });
     }
 
@@ -243,23 +242,11 @@
         });
     }
 
-    function postResponse() {
-        const body = document.getElementById('res-content').value;
-        const name = document.getElementById('res-name').value.trim() || DEFAULT_NAMES[currentBoard];
-        const file = document.getElementById('res-file').files[0];
-        const time = new Date().toLocaleString();
-        const save = (imgData) => {
-            db.ref('boards/' + currentBoard + '/' + currentThreadKey + '/posts').push({ name, date: time, id: myId, body, img: imgData || "", deleted: false });
-            db.ref('boards/' + currentBoard + '/' + currentThreadKey).update({ lastUpdate: time });
-            document.getElementById('res-content').value = "";
-            handleResInput();
-        };
-        if(file) { const r = new FileReader(); r.onload = (e) => save(e.target.result); r.readAsDataURL(file); } 
-        else save(null);
-    }
-
     function submitNewThread() {
-        const name = document.getElementById('new-name').value.trim() || DEFAULT_NAMES[currentBoard], time = new Date().toLocaleString();
+        const btn = document.getElementById('btn-submit-thread');
+        btn.innerText = "作成中..."; btn.disabled = true;
+        const name = document.getElementById('new-name').value.trim() || DEFAULT_NAMES[currentBoard];
+        const time = new Date().toLocaleString();
         const newRef = db.ref('boards/' + currentBoard).push();
         newRef.set({
             title: pendingThread.title, lastUpdate: time,
@@ -267,49 +254,57 @@
         }).then(() => {
             document.getElementById('confirm-view').classList.add('hidden');
             showThread(newRef.key, pendingThread.title);
+        }).catch(e => { alert("エラー: " + e.message); btn.innerText = "同意して作成"; btn.disabled = false; });
+    }
+
+    function postResponse() {
+        const body = document.getElementById('res-content').value;
+        const name = document.getElementById('res-name').value.trim() || DEFAULT_NAMES[currentBoard];
+        const time = new Date().toLocaleString();
+        if(!body) return;
+        db.ref('boards/' + currentBoard + '/' + currentThreadKey + '/posts').push({ 
+            name, date: time, id: myId, body, img: "", deleted: false 
         });
+        db.ref('boards/' + currentBoard + '/' + currentThreadKey).update({ lastUpdate: time });
+        document.getElementById('res-content').value = "";
+    }
+
+    function showConfirm() {
+        const title = document.getElementById('new-title').value;
+        const content = document.getElementById('new-content').value;
+        const file = document.getElementById('new-file').files[0];
+        if(!title || !content) return alert("入力してください");
+        const proceed = (img) => {
+            pendingThread = { title, content, img };
+            document.getElementById('index-view').classList.add('hidden');
+            document.getElementById('confirm-view').classList.remove('hidden');
+            let sec = 5; const btn = document.getElementById('btn-submit-thread'); btn.disabled = true;
+            const timer = setInterval(() => {
+                sec--; document.getElementById('timer-msg').innerText = sec > 0 ? `あと ${sec} 秒` : "作成可能";
+                if(sec <= 0) { clearInterval(timer); btn.disabled = false; }
+            }, 1000);
+        };
+        if(file) { const r = new FileReader(); r.onload = (e) => proceed(e.target.result); r.readAsDataURL(file); } else proceed("");
     }
 
     function deletePost(resKey) { if(confirm("消しますか？")) db.ref('boards/' + currentBoard + '/' + currentThreadKey + '/posts/' + resKey).update({ deleted: true }); }
-    function checkTitleLimit() { const val = document.getElementById('new-title').value; document.getElementById('title-char-info').innerText = `${val.length} / ${MAX_TITLE}`; }
-    function checkCharLimit(areaId, infoId) {
-        const val = document.getElementById(areaId).value;
-        const info = document.getElementById(infoId);
-        info.innerText = `${val.length} / ${MAX_CHARS}`;
-        info.style.color = val.length > MAX_CHARS ? "red" : "inherit";
-    }
-    function handleResInput() {
-        const area = document.getElementById('res-content'), btn = document.getElementById('btn-post-res'), label = document.getElementById('res-timer-label');
-        if (!area || !btn) return;
-        checkCharLimit('res-content', 'res-char-info');
-        clearTimeout(postTimer); clearInterval(countdownInterval); btn.disabled = true;
-        if (area.value.length === 0 || area.value.length > MAX_CHARS) { label.innerText = area.value.length > MAX_CHARS ? "文字数オーバー" : "本文を入力してください"; return; }
-        let sec = 3; label.innerText = `あと${sec}秒で投稿可能`;
-        countdownInterval = setInterval(() => { sec--; label.innerText = sec > 0 ? `あと${sec}秒で投稿可能` : "投稿可能"; if(sec<=0) clearInterval(countdownInterval); }, 1000);
-        postTimer = setTimeout(() => { btn.disabled = false; }, 3000);
-    }
-    function filterWords(text) { return text ? text.replace(/(?<!パ)[ちチ][んン][こコぽポ]/g, "例の棒").replace(/[まマ][んン][こコ]/g, "例の穴") : ""; }
-    function processText(text, isDeleted) {
-        if (isDeleted) return '<span class="deleted-text">削除されました。</span>';
-        let escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        escaped = filterWords(escaped).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" class="auto-link">$1</a>').replace(/&gt;&gt;(\d+)/g, '<span class="anchor" onclick="scrollToRes($1)">&gt;&gt;$1</span>');
-        return escaped;
+    function cancelNewThread() { document.getElementById('confirm-view').classList.add('hidden'); document.getElementById('index-view').classList.remove('hidden'); }
+    function checkTitleLimit() { document.getElementById('title-char-info').innerText = document.getElementById('new-title').value.length + " / 50"; }
+    function checkCharLimit(a, i) { document.getElementById(i).innerText = document.getElementById(a).value.length + " / 3000"; }
+    function filterWords(t) { return t ? t.replace(/(?<!パ)[ちチ][んン][こコぽポ]/g, "例の棒").replace(/[まマ][んン][こコ]/g, "例の穴") : ""; }
+    function processText(t, d) {
+        if(d) return '<span class="deleted-text">削除されました。</span>';
+        let esc = t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        esc = filterWords(esc).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" class="auto-link">$1</a>').replace(/&gt;&gt;(\d+)/g, '<span class="anchor" onclick="scrollToRes($1)">&gt;&gt;$1</span>');
+        return esc;
     }
     function updatePostArea() {
-        const container = document.getElementById('post-area-container');
-        container.innerHTML = `<div class="post-form" style="margin-top:20px;"><strong>レスを書く</strong><br>名前: <input type="text" id="res-name" placeholder="${DEFAULT_NAMES[currentBoard]}"><br>本文:<br><textarea id="res-content" oninput="handleResInput()"></textarea><br><div id="res-char-info" style="font-size:0.75em;">0 / 3000</div>画像: <input type="file" id="res-file" accept="image/*" style="width:100%; margin: 5px 0;"><button id="btn-post-res" class="nav-btn" onclick="postResponse()" disabled style="width:100%; padding:12px; margin-top:5px;">投稿</button><div id="res-timer-label" style="font-size:0.75em; color:#666; margin-top:5px; text-align:center;">本文を入力してください</div></div>`;
+        document.getElementById('post-area-container').innerHTML = `<div class="post-form"><strong>レスを書く</strong><br>名前: <input type="text" id="res-name" placeholder="${DEFAULT_NAMES[currentBoard]}"><br>本文:<br><textarea id="res-content"></textarea><br><button class="nav-btn" onclick="postResponse()" style="width:100%; padding:10px;">投稿</button></div>`;
     }
-    function showConfirm() {
-        const title = document.getElementById('new-title').value, content = document.getElementById('new-content').value, file = document.getElementById('new-file').files[0];
-        if(!title || !content) return alert("入力してください");
-        const proceed = (img) => { pendingThread = { title, content, img }; document.getElementById('index-view').classList.add('hidden'); document.getElementById('confirm-view').classList.remove('hidden'); let sec = 5; const btn = document.getElementById('btn-submit-thread'); btn.disabled = true; const t = setInterval(() => { sec--; document.getElementById('timer-msg').innerText = sec > 0 ? `あと ${sec} 秒` : "作成可能"; if(sec<=0){ clearInterval(t); btn.disabled = false; } }, 1000); };
-        if (file) { const r = new FileReader(); r.onload = (e) => proceed(e.target.result); r.readAsDataURL(file); } else proceed(null);
-    }
-    function cancelNewThread() { document.getElementById('confirm-view').classList.add('hidden'); document.getElementById('index-view').classList.remove('hidden'); }
     function scrollToRes(n) { const target = document.getElementById(`res-${n}`); if(target) target.scrollIntoView({ behavior: 'smooth' }); }
     function scrollToBottom() { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }
-    function refreshThread() { renderResponses(); }
-    function insertAnchor(n) { const tx = document.getElementById('res-content'); if(!tx) return; tx.value = `>>${n}\n` + tx.value; tx.focus(); handleResInput(); }
+    function refreshThread() { db.ref('boards/' + currentBoard + '/' + currentThreadKey + '/posts').once('value', renderResponses); }
+    function insertAnchor(n) { const tx = document.getElementById('res-content'); if(tx) tx.value = `>>${n}\n` + tx.value; }
     window.onload = init;
 </script>
 </body>
