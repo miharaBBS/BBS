@@ -2,11 +2,27 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>mihara BBS</title>
+    
+    <link rel="icon" href="logo2.png" type="image/png">
+    <link rel="apple-touch-icon" href="logo2.png">
+
     <style>
         body { font-family: sans-serif; margin: 0; padding: 0; background-color: #dcdcdc; display: flex; flex-direction: column; min-height: 100vh; color: #333; }
         .container { max-width: 900px; margin: 0 auto; background-color: #fff; flex: 1; padding: 10px; box-sizing: border-box; width: 100%; display: flex; flex-direction: column; }
+        
+        /* 拡大問題を解決：スマホで16px以上にするとズームしなくなります */
+        input[type="text"], 
+        input[type="file"], 
+        textarea { 
+            width: 100%; 
+            box-sizing: border-box; 
+            padding: 10px; 
+            margin: 5px 0; 
+            font-size: 16px !important; /* iOSの自動ズーム防止 */
+        }
+
         #main-content { flex: 1; }
         .site-logo { display: block; max-width: 100%; height: auto; margin: 0 auto 10px; }
         .res-item { border-bottom: 1px solid #eee; padding: 15px 0; background: #fff; position: relative; scroll-margin-top: 80px; }
@@ -30,8 +46,7 @@
         .nav-btn:disabled { background: #999 !important; cursor: not-allowed; }
         .refresh-btn { background: #228b22; }
         .post-form { background: #f0f0f5; padding: 12px; border: 1px solid #ccc; margin-bottom: 20px; }
-        textarea { width: 100%; height: 120px; margin: 5px 0; box-sizing: border-box; padding: 8px; font-size: 1em; }
-        input[type="text"] { width: 100%; box-sizing: border-box; padding: 8px; margin: 5px 0; }
+        textarea { height: 120px; }
         .hidden { display: none; }
         .anchor { color: #0047bd; text-decoration: underline; cursor: pointer; }
         .auto-link { color: #0047bd; text-decoration: underline; word-break: break-all; }
@@ -198,7 +213,6 @@
                 container.innerHTML = "<div style='text-align:center; padding:20px; color:#666;'>まだスレッドがありません。</div>";
                 return;
             }
-            // lastUpdate（レス投稿時間）で降順ソート
             const threads = Object.keys(data).map(key => ({ ...data[key], key: key }))
                                   .sort((a, b) => new Date(b.lastUpdate).getTime() - new Date(a.lastUpdate).getTime());
             
@@ -259,7 +273,6 @@
             db.ref('boards/' + currentBoard + '/' + currentThreadKey + '/posts').push({ 
                 name, date: time, id: myId, body, img: imgData || "", deleted: false 
             });
-            // スレッド一覧の並び順（あげ）のために親のlastUpdateも更新
             db.ref('boards/' + currentBoard + '/' + currentThreadKey).update({ lastUpdate: time });
             area.value = "";
             fileInput.value = "";
