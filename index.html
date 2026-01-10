@@ -17,7 +17,7 @@
         .op-btn:hover { background: #eee; }
         .deleted-text { color: #ff0000; font-weight: bold; }
         .aa { font-family: "Mona", "MS PGothic", "IPA P Gothic", sans-serif; font-size: 16px; line-height: 1.1; white-space: pre-wrap; margin: 10px 0; background: #fff; padding: 10px; border: 1px solid #eee; overflow-x: auto; word-break: break-all; }
-        .uploaded-img { max-width: 100%; height: auto; display: block; margin: 10px 0; border: 1px solid #ccc; }
+        .uploaded-img { max-width: 100%; height: auto; display: block; margin: 10px 0; border: 1px solid #ccc; cursor: pointer; }
         .site-summary { background: #fff; border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; font-size: 0.85em; }
         .rules { color: #d00; font-weight: bold; margin-top: 5px; }
         .board-card { background: #fff; border: 1px solid #0047bd; padding: 15px; margin-bottom: 10px; cursor: pointer; }
@@ -50,7 +50,6 @@
             <div class="site-summary">
                 mihara BBSは多分世界初のAIで作られた掲示板サイトです。<br>
                 アプデ告知用Twitter（仮）<a href="https://twitter.com/AAA1413070" target="_blank" class="auto-link">https://twitter.com/AAA1413070</a><br>
-                アプデするとスレッドが全削除されるので是非。<br>
                 <div class="rules">利用規約: 誹謗中傷・エッチ・宣伝・転載その他日本の法律に違反する物は禁止です。本掲示板で発生した事件等は一切責任は負いかねます。</div>
             </div>
             <div id="board-portal"></div>
@@ -134,7 +133,7 @@
     const DEFAULT_NAMES = { '雑談': '名無しの人', 'AA絵一次': '（　´∀｀）', 'AA絵二次': '(´・ω・)', 'YMM4': '名無し饅頭' };
     const MAX_CHARS = 3000, MAX_TITLE = 50, EXPIRE_TIME = 12 * 60 * 60 * 1000;
     
-    let currentBoard = "", currentThreadKey = null, pendingThread = null, myId = "";
+    let currentBoard = "", currentThreadKey = null, pendingThread = null, postTimer = null, countdownInterval = null, myId = "";
 
     function init() {
         if (!sessionStorage.getItem('user_id')) sessionStorage.setItem('user_id', "ID:" + Math.random().toString(36).substring(2, 10).toUpperCase());
@@ -200,8 +199,8 @@
                 return;
             }
             const threads = Object.keys(data).map(key => ({ ...data[key], key: key }))
-                                  .sort((a, b) => new Date(b.lastUpdate) - new Date(a.lastUpdate));
-            threads.forEach(th => {
+                                  .sort((a, b) => new Date(b.lastUpdate).getTime() - new Date(a.lastUpdate).getTime());
+            threads.reverse().forEach(th => {
                 const posts = Object.values(th.posts || {});
                 const lastPost = posts[posts.length - 1] || { body: "" };
                 const div = document.createElement('div');
@@ -225,7 +224,6 @@
 
     function renderResponses(snapshot) {
         const list = document.getElementById('res-list');
-        // Firebaseのキー(pushされたユニークID)にかかわらず、登録時刻の昇順でソート
         const rawData = snapshot.val() || {};
         const posts = Object.entries(rawData).map(([k, v]) => ({...v, resKey: k}))
                         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -246,6 +244,45 @@
         });
     }
 
+    async function postResponse() {
+        const area = document.getElementById('res-content');
+        const nameInput = document.getElementById('res-name');
+        const fileInput = document.getElementById('res-file');
+        const body = area.value;
+        const name = nameInput.value.trim() || DEFAULT_NAMES[currentBoard];
+        const time = new Date().toLocaleString();
+        const file = fileInput.files[0];
+
+        const save = (imgData) => {
+            db.ref('boards/' + currentBoard + '/' + currentThreadKey + '/posts').push({ 
+                name, date: time, id: myId, body, img: imgData || "", deleted: false 
+            });
+            db.ref('boards/' + currentBoard + '/' + currentThreadKey).update({ lastUpdate: time });
+            area.value = "";
+            fileInput.value = "";
+            handleResInput();
+        };
+
+        if(file) {
+            const r = new FileReader();
+            r.onload = (e) => save(e.target.result);
+            r.readAsDataURL(file);
+        } else {
+            save("");
+        }
+    }
+
+    function handleResInput() {
+        const area = document.getElementById('res-content'), btn = document.getElementById('btn-post-res'), label = document.getElementById('res-timer-label');
+        if (!area || !btn) return;
+        checkCharLimit('res-content', 'res-char-info');
+        clearTimeout(postTimer); clearInterval(countdownInterval); btn.disabled = true;
+        if (area.value.length === 0 || area.value.length > MAX_CHARS) { label.innerText = area.value.length > MAX_CHARS ? "文字数オーバー" : "本文を入力してください"; return; }
+        let sec = 3; label.innerText = `あと${sec}秒で投稿可能`;
+        countdownInterval = setInterval(() => { sec--; label.innerText = sec > 0 ? `あと${sec}秒で投稿可能` : "投稿可能"; if(sec<=0) clearInterval(countdownInterval); }, 1000);
+        postTimer = setTimeout(() => { btn.disabled = false; }, 3000);
+    }
+
     function submitNewThread() {
         const btn = document.getElementById('btn-submit-thread');
         btn.innerText = "作成中..."; btn.disabled = true;
@@ -261,45 +298,26 @@
         }).catch(e => { alert("エラー: " + e.message); btn.innerText = "同意して作成"; btn.disabled = false; });
     }
 
-    function postResponse() {
-        const body = document.getElementById('res-content').value;
-        const name = document.getElementById('res-name').value.trim() || DEFAULT_NAMES[currentBoard];
-        const time = new Date().toLocaleString();
-        if(!body) return;
-        db.ref('boards/' + currentBoard + '/' + currentThreadKey + '/posts').push({ 
-            name, date: time, id: myId, body, img: "", deleted: false 
-        });
-        db.ref('boards/' + currentBoard + '/' + currentThreadKey).update({ lastUpdate: time });
-        document.getElementById('res-content').value = "";
-    }
-
     function showConfirm() {
         const title = document.getElementById('new-title').value;
         const content = document.getElementById('new-content').value;
-        const file = document.getElementById('new-file').files[0];
+        const fileInput = document.getElementById('new-file');
+        const file = fileInput.files[0];
         if(!title || !content) return alert("入力してください");
         
         const proceed = (img) => {
             pendingThread = { title, content, img };
             document.getElementById('index-view').classList.add('hidden');
             document.getElementById('confirm-view').classList.remove('hidden');
-            
             let sec = 5; 
             const btn = document.getElementById('btn-submit-thread'); 
             const msgArea = document.getElementById('timer-msg');
-            
             btn.disabled = true; 
-            msgArea.innerText = `あと ${sec} 秒`; // 初期表示をタイマーにする
-            
+            msgArea.innerText = `あと ${sec} 秒`;
             const timer = setInterval(() => {
                 sec--; 
-                if(sec <= 0) { 
-                    clearInterval(timer); 
-                    msgArea.innerText = "作成可能";
-                    btn.disabled = false; 
-                } else {
-                    msgArea.innerText = `あと ${sec} 秒`;
-                }
+                if(sec <= 0) { clearInterval(timer); msgArea.innerText = "作成可能"; btn.disabled = false; }
+                else { msgArea.innerText = `あと ${sec} 秒`; }
             }, 1000);
         };
         if(file) { const r = new FileReader(); r.onload = (e) => proceed(e.target.result); r.readAsDataURL(file); } else proceed("");
@@ -317,12 +335,21 @@
         return esc;
     }
     function updatePostArea() {
-        document.getElementById('post-area-container').innerHTML = `<div class="post-form"><strong>レスを書く</strong><br>名前: <input type="text" id="res-name" placeholder="${DEFAULT_NAMES[currentBoard]}"><br>本文:<br><textarea id="res-content"></textarea><br><button class="nav-btn" onclick="postResponse()" style="width:100%; padding:10px;">投稿</button></div>`;
+        document.getElementById('post-area-container').innerHTML = `
+            <div class="post-form">
+                <strong>レスを書く</strong><br>
+                名前: <input type="text" id="res-name" placeholder="${DEFAULT_NAMES[currentBoard]}"><br>
+                本文:<br><textarea id="res-content" oninput="handleResInput()"></textarea><br>
+                <div id="res-char-info" style="font-size:0.75em;">0 / 3000</div>
+                画像: <input type="file" id="res-file" accept="image/*" style="width:100%; margin: 5px 0;">
+                <button id="btn-post-res" class="nav-btn" onclick="postResponse()" disabled style="width:100%; padding:12px; margin-top:5px;">投稿</button>
+                <div id="res-timer-label" style="font-size:0.75em; color:#666; margin-top:5px; text-align:center;">本文を入力してください</div>
+            </div>`;
     }
     function scrollToRes(n) { const target = document.getElementById(`res-${n}`); if(target) target.scrollIntoView({ behavior: 'smooth' }); }
     function scrollToBottom() { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }
     function refreshThread() { db.ref('boards/' + currentBoard + '/' + currentThreadKey + '/posts').once('value', renderResponses); }
-    function insertAnchor(n) { const tx = document.getElementById('res-content'); if(tx) tx.value = `>>${n}\n` + tx.value; }
+    function insertAnchor(n) { const tx = document.getElementById('res-content'); if(tx) { tx.value = `>>${n}\n` + tx.value; handleResInput(); } }
     window.onload = init;
 </script>
 </body>
