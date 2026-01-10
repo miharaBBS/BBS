@@ -106,7 +106,6 @@
 <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
 
 <script>
-    // --- 合成された Firebase 設定 ---
     const firebaseConfig = {
         apiKey: "AIzaSyB76FaBptbmuJEBbprV5cB4NOhQrPYokOw",
         authDomain: "mihara-bbs-cac0e.firebaseapp.com",
@@ -115,7 +114,7 @@
         messagingSenderId: "70498873463",
         appId: "1:70498873463:web:bb9f97221ab57c5565d672",
         measurementId: "G-PQSF4BHCT0",
-        databaseURL: "https://mihara-bbs-cac0e-default-rtdb.firebaseio.com" // 手動補完
+        databaseURL: "https://mihara-bbs-cac0e-default-rtdb.firebaseio.com"
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
@@ -185,15 +184,20 @@
 
     function renderIndex() {
         const container = document.getElementById('thread-list-container');
-        db.ref('boards/' + currentBoard).off();
-        db.ref('boards/' + currentBoard).on('value', (snapshot) => {
+        const boardRef = db.ref('boards/' + currentBoard);
+        boardRef.off(); 
+        boardRef.on('value', (snapshot) => {
             const data = snapshot.val();
             container.innerHTML = "";
             if (!data) {
                 container.innerHTML = "<div style='text-align:center; padding:20px; color:#666;'>まだスレッドがありません。</div>";
                 return;
             }
-            const threads = Object.keys(data).map(k => ({...data[k], key: k})).sort((a,b) => new Date(b.lastUpdate) - new Date(a.lastUpdate));
+            const threads = Object.keys(data).map(key => ({
+                ...data[key],
+                key: key
+            })).sort((a, b) => new Date(b.lastUpdate) - new Date(a.lastUpdate));
+
             threads.forEach(th => {
                 const posts = Object.values(th.posts || {});
                 const lastPost = posts[posts.length - 1] || { body: "" };
@@ -203,6 +207,8 @@
                 div.innerHTML = `<div class="thread-header"><h3 style="color:red;margin:0;font-size:1.1em;">${filterWords(th.title)}</h3><div class="thread-meta">${posts.length}レス | ${th.lastUpdate}</div></div><div class="thread-desc">${filterWords(lastPost.body.substring(0,40))}...</div>`;
                 container.appendChild(div);
             });
+        }, (error) => {
+            container.innerHTML = "<div style='color:red;'>データの読み込みに失敗しました。ルールの設定を確認してください。</div>";
         });
     }
 
@@ -257,13 +263,13 @@
         newRef.set({
             title: pendingThread.title, lastUpdate: time,
             posts: { "first": { name, date: time, id: myId, body: pendingThread.content, img: pendingThread.img || "", deleted: false } }
+        }).then(() => {
+            document.getElementById('confirm-view').classList.add('hidden');
+            showThread(newRef.key, pendingThread.title);
         });
-        document.getElementById('confirm-view').classList.add('hidden');
-        showThread(newRef.key, pendingThread.title);
     }
 
     function deletePost(resKey) { if(confirm("消しますか？")) db.ref('boards/' + currentBoard + '/' + currentThreadKey + '/posts/' + resKey).update({ deleted: true }); }
-    
     function checkTitleLimit() { const val = document.getElementById('new-title').value; document.getElementById('title-char-info').innerText = `${val.length} / ${MAX_TITLE}`; }
     function checkCharLimit(areaId, infoId) {
         const val = document.getElementById(areaId).value;
@@ -281,7 +287,6 @@
         countdownInterval = setInterval(() => { sec--; label.innerText = sec > 0 ? `あと${sec}秒で投稿可能` : "投稿可能"; if(sec<=0) clearInterval(countdownInterval); }, 1000);
         postTimer = setTimeout(() => { btn.disabled = false; }, 3000);
     }
-
     function filterWords(text) { return text ? text.replace(/(?<!パ)[ちチ][んン][こコぽポ]/g, "例の棒").replace(/[まマ][んン][こコ]/g, "例の穴") : ""; }
     function processText(text, isDeleted) {
         if (isDeleted) return '<span class="deleted-text">削除されました。</span>';
