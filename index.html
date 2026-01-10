@@ -16,13 +16,14 @@
         #main-content { flex: 1; }
         .site-logo { display: block; max-width: 100%; height: auto; margin: 0 auto 10px; }
         .res-item { border-bottom: 1px solid #eee; padding: 15px 0; background: #fff; position: relative; scroll-margin-top: 80px; }
-        .info { font-size: 0.85em; padding-right: 100px; word-wrap: break-word; }
+        .info { font-size: 0.85em; padding-right: 120px; word-wrap: break-word; }
         .name { color: #228b22; font-weight: bold; }
         .admin-name { color: #ff0000 !important; }
         .res-ops { position: absolute; top: 10px; right: 5px; display: flex; gap: 5px; }
         .op-btn { color: #666; font-size: 0.75em; cursor: pointer; border: 1px solid #ccc; padding: 2px 8px; background: #f9f9f9; border-radius: 3px; text-decoration: none; display: inline-block; }
-        .op-btn:hover { background: #eee; }
+        /* BANボタン専用 */
         .admin-op-btn { background: #ff4500 !important; color: white !important; border-color: #d00 !important; }
+        .unban-btn { background: #228b22 !important; color: white !important; }
         .deleted-text { color: #ff0000; font-weight: bold; }
         .aa { font-family: "Mona", "MS PGothic", "IPA P Gothic", sans-serif; font-size: 16px; line-height: 1.1; white-space: pre-wrap; margin: 10px 0; background: #fff; padding: 10px; border: 1px solid #eee; overflow-x: auto; word-break: break-all; }
         .uploaded-img { max-width: 100%; height: auto; display: block; margin: 10px 0; border: 1px solid #ccc; pointer-events: none; }
@@ -38,12 +39,14 @@
         .nav-btn:disabled { background: #999 !important; cursor: not-allowed; }
         .refresh-btn { background: #228b22; }
         .post-form { background: #f0f0f5; padding: 12px; border: 1px solid #ccc; margin-bottom: 20px; }
-        .hidden { display: none; }
+        .hidden { display: none !important; }
         .anchor { color: #0047bd; text-decoration: underline; cursor: pointer; }
         .auto-link { color: #0047bd; text-decoration: underline; word-break: break-all; }
         .inner-footer { text-align: center; padding: 20px 10px; border-top: 1px solid #eee; font-size: 0.75em; color: #666; background-color: #fff; margin-top: auto; width: 100%; box-sizing: border-box; }
         .footer-banner { width: 200px; height: auto; min-height: 40px; display: block; margin: 10px auto 10px; border: 1px solid #ccc; }
         .thread-nav-bar { position: sticky; top: 0; background-color: #fff; padding: 10px 0; z-index: 100; display: flex; gap: 8px; border-bottom: 1px solid #ccc; margin-bottom: 10px; }
+        .ban-list-table { width: 100%; border-collapse: collapse; font-size: 0.8em; margin-top: 10px; background: #fff; }
+        .ban-list-table th, .ban-list-table td { border: 1px solid #ccc; padding: 5px; text-align: left; }
         @media (min-width: 600px) { .container { padding: 20px; } .thread-header { flex-direction: row; } }
     </style>
 </head>
@@ -58,6 +61,7 @@
                 アプデ告知用Twitter（仮）<a href="https://twitter.com/AAA1413070" target="_blank" class="auto-link">https://twitter.com/AAA1413070</a><br>
                 <div class="rules">利用規約: 誹謗中傷・エッチ・宣伝・転載その他日本の法律に違反する物は禁止です。本掲示板で発生したトラブル等の責任は負いかねます。</div>
             </div>
+
             <div id="news-container" class="news-area">
                 <div class="news-title">お知らせ</div>
                 <div id="news-text" style="white-space: pre-wrap;">読み込み中...</div>
@@ -67,7 +71,16 @@
                     <button class="nav-btn" onclick="saveNews()">お知らせを更新</button>
                 </div>
             </div>
+            
             <div id="board-portal"></div>
+
+            <div id="admin-ban-area" class="hidden" style="margin-top: 30px; border: 2px solid red; padding: 10px;">
+                <h3 style="color:red; margin:0;">出禁リスト</h3>
+                <table class="ban-list-table">
+                    <thead><tr><th>日時</th><th>板</th><th>ID</th><th>内容</th><th>操作</th></tr></thead>
+                    <tbody id="ban-list-body"></tbody>
+                </table>
+            </div>
         </div>
 
         <div id="index-view" class="hidden">
@@ -114,9 +127,9 @@
     <div id="global-footer" class="inner-footer">
         当サイトはリンクフリーです、バナーはご自由にお使いください。<br>
         <img src="banner.png" alt="mihara BBSバナー" class="footer-banner">
-        <div style="margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px;">
+        <div style="margin-top: 10px;">
             <span id="admin-indicator" style="font-size: 0.8em; color: #aaa;">一般ユーザーモード</span><br>
-            <div id="login-form">
+            <div id="login-controls">
                 <input type="text" id="admin-email" placeholder="email" style="width: 140px; padding: 4px; font-size: 11px !important; border: 1px solid #ddd;">
                 <input type="password" id="admin-pass" placeholder="pass" style="width: 100px; padding: 4px; font-size: 11px !important; border: 1px solid #ddd;">
                 <button onclick="loginAdmin()" style="font-size: 11px; padding: 4px 8px; cursor: pointer;">Login</button>
@@ -127,11 +140,14 @@
 </div>
 
 <script>
-    // Firebase設定
     const firebaseConfig = {
         apiKey: "AIzaSyB76FaBptbmuJEBbprV5cB4NOhQrPYokOw",
         authDomain: "mihara-bbs-cac0e.firebaseapp.com",
         projectId: "mihara-bbs-cac0e",
+        storageBucket: "mihara-bbs-cac0e.firebasestorage.app",
+        messagingSenderId: "70498873463",
+        appId: "1:70498873463:web:bb9f97221ab57c5565d672",
+        measurementId: "G-PQSF4BHCT0",
         databaseURL: "https://mihara-bbs-cac0e-default-rtdb.asia-southeast1.firebasedatabase.app"
     };
 
@@ -143,68 +159,47 @@
         '雑談': '雑談する板です。雑にしゃべって下さい。',
         'AA絵一次': 'AAとか絵（オリジナル）の板です。AI絵は禁止です。',
         'AA絵二次': 'AAとか絵（二次創作）の板です。AI絵は禁止です。',
-        'YMM4': 'YMM4板を名乗っていますが、素材などの質問をする場が無かったので作ってみました。この板に限り編集関係の素材・プラグイン等の宣伝は許可します。※このサイトは最後のレス更新から十二時間経過すると自動でスレッドごと削除されてしまうので、保存したい場合はスクショをお願いします。'
+        'YMM4': 'YMM4板を名乗っていますが、YMM4に限らずゆっくり・ボイロの編集関係の質問などなら大体大丈夫です。素材などの質問をする場が無かったので作ってみました。この板に限り編集関係の素材・プラグイン等の宣伝は許可します。※このサイトは最後のレス更新から十二時間経過すると自動でスレッドごと削除されてしまうので、保存したい場合はスクショをお願いします。'
     };
     const DEFAULT_NAMES = { '雑談': '名無しの人', 'AA絵一次': '（　´∀｀）', 'AA絵二次': '(´・ω・)', 'YMM4': '名無し饅頭' };
-    
-    let currentBoard = "", currentThreadKey = null, pendingThread = null, countdownInterval = null, myId = "", isAdmin = false, isBanned = false;
+
+    let currentBoard = "", currentThreadKey = null, pendingThread = null, countdownInterval = null, myId = "", isAdmin = false, isBanned = false, fullBanList = {};
 
     function init() {
-        // ID固定（localStorage）
-        if (!localStorage.getItem('user_id')) {
-            localStorage.setItem('user_id', "ID:" + Math.random().toString(36).substring(2, 10).toUpperCase());
-        }
-        myId = localStorage.getItem('user_id');
+        if (!sessionStorage.getItem('user_id')) sessionStorage.setItem('user_id', "ID:" + Math.random().toString(36).substring(2, 10).toUpperCase());
+        myId = sessionStorage.getItem('user_id');
 
-        // BAN監視
-        db.ref('ban_list/' + myId.replace("ID:", "")).on('value', (snap) => {
-            isBanned = snap.exists();
+        // BANリストのリアルタイム同期
+        db.ref('ban_list').on('value', snap => {
+            fullBanList = snap.val() || {};
+            isBanned = !!fullBanList[myId.replace("ID:", "")];
+            renderBanTable();
+            if(currentThreadKey) refreshThread();
         });
 
-        // ログイン監視
+        // ログイン状態監視
         auth.onAuthStateChanged(user => {
-            if (user) {
-                isAdmin = true;
-                document.getElementById('admin-indicator').innerText = "管理者：三原";
-                document.getElementById('admin-indicator').style.color = "red";
-                document.getElementById('login-form').classList.add('hidden');
-                document.getElementById('logout-btn').classList.remove('hidden');
-                document.getElementById('admin-news-edit').classList.remove('hidden');
-            } else {
-                isAdmin = false;
-                document.getElementById('admin-indicator').innerText = "一般ユーザーモード";
-                document.getElementById('admin-indicator').style.color = "#aaa";
-                document.getElementById('login-form').classList.remove('hidden');
-                document.getElementById('logout-btn').classList.add('hidden');
-                document.getElementById('admin-news-edit').classList.add('hidden');
-            }
+            isAdmin = !!user;
+            document.getElementById('admin-indicator').innerText = isAdmin ? "管理者：三原" : "一般ユーザーモード";
+            document.getElementById('admin-indicator').style.color = isAdmin ? "red" : "#aaa";
+            document.getElementById('login-controls').classList.toggle('hidden', isAdmin);
+            document.getElementById('logout-btn').classList.toggle('hidden', !isAdmin);
+            document.getElementById('admin-news-edit').classList.toggle('hidden', !isAdmin);
+            document.getElementById('admin-ban-area').classList.toggle('hidden', !isAdmin);
         });
 
         renderPortal();
         syncNews();
     }
 
-    // 管理者ログイン・アウト
     function loginAdmin() {
         const email = document.getElementById('admin-email').value;
         const pass = document.getElementById('admin-pass').value;
-        auth.signInWithEmailAndPassword(email, pass).catch(err => alert("失敗: " + err.message));
-    }
-    function logoutAdmin() { auth.signOut().then(() => alert("ログアウトしました")); }
-
-    // BAN操作（管理者専用）
-    function toggleBan(targetId) {
-        if (!isAdmin) return;
-        if (targetId === myId) return alert("自分は禁止できません");
-        const sid = targetId.replace("ID:", "");
-        const ref = db.ref('ban_list/' + sid);
-        ref.once('value', s => {
-            if (s.exists()) { if(confirm("解除しますか？")) ref.remove(); }
-            else { if(confirm(targetId + " を出禁にしますか？")) ref.set({ bannedAt: new Date().toLocaleString() }); }
-        });
+        auth.signInWithEmailAndPassword(email, pass).catch(e => alert("ログイン失敗: " + e.message));
     }
 
-    // 表示系
+    function logoutAdmin() { auth.signOut(); }
+
     function syncNews() {
         db.ref('site_news').on('value', (snap) => {
             const data = snap.val() || { text: "特にお知らせはありません。", date: "-" };
@@ -213,11 +208,13 @@
             document.getElementById('news-input').value = data.text;
         });
     }
+
     function saveNews() {
-        if (!isAdmin) return;
-        db.ref('site_news').set({ text: document.getElementById('news-input').value, date: new Date().toLocaleString() });
+        const newText = document.getElementById('news-input').value;
+        db.ref('site_news').set({ text: newText, date: new Date().toLocaleString() }).then(() => alert("更新しました"));
     }
 
+    // --- 表示切り替えロジック ---
     function renderPortal() {
         const portal = document.getElementById('board-portal');
         portal.innerHTML = "";
@@ -235,6 +232,7 @@
         document.getElementById('portal-view').classList.add('hidden');
         document.getElementById('index-view').classList.remove('hidden');
         document.getElementById('thread-view').classList.add('hidden');
+        document.getElementById('global-footer').classList.add('hidden');
         document.getElementById('current-board-name').innerText = name + "板";
         document.getElementById('board-description-area').innerText = BOARD_INFO[name];
         document.getElementById('new-name').placeholder = isAdmin ? "三原" : DEFAULT_NAMES[name];
@@ -243,27 +241,27 @@
 
     function showPortal() {
         document.getElementById('portal-view').classList.remove('hidden');
+        document.getElementById('global-footer').classList.remove('hidden');
         document.getElementById('index-view').classList.add('hidden');
         document.getElementById('thread-view').classList.add('hidden');
         document.getElementById('confirm-view').classList.add('hidden');
     }
 
+    // --- スレッド・レス描画 ---
     function renderIndex() {
         const container = document.getElementById('thread-list-container');
+        db.ref('boards/' + currentBoard).off();
         db.ref('boards/' + currentBoard).on('value', (snapshot) => {
-            const data = snapshot.val();
-            container.innerHTML = "";
-            if (!data) return;
-            Object.keys(data).map(k => ({...data[k], key: k}))
-                .sort((a,b) => new Date(b.lastUpdate) - new Date(a.lastUpdate))
-                .forEach(th => {
-                    const div = document.createElement('div');
-                    div.className = "thread-link";
-                    div.onclick = () => showThread(th.key, th.title);
-                    div.innerHTML = `<div class="thread-header"><h3 style="color:red;margin:0;">${filterWords(th.title)}</h3><div class="thread-meta">${Object.keys(th.posts||{}).length}レス | ${th.lastUpdate}</div></div>
-                    ${isAdmin ? `<span class="op-btn admin-op-btn" style="position:absolute;right:10px;bottom:10px;" onclick="event.stopPropagation(); deleteThread('${th.key}')">削除</span>` : ""}`;
-                    container.appendChild(div);
-                });
+            const data = snapshot.val(); container.innerHTML = ""; if (!data) return;
+            const threads = Object.keys(data).map(key => ({ ...data[key], key: key }))
+                            .sort((a, b) => new Date(b.lastUpdate) - new Date(a.lastUpdate));
+            threads.forEach(th => {
+                const div = document.createElement('div'); div.className = "thread-link";
+                div.onclick = () => showThread(th.key, th.title);
+                div.innerHTML = `<div class="thread-header"><h3 style="color:red;margin:0;">${filterWords(th.title)}</h3><div class="thread-meta">${Object.values(th.posts||{}).length}レス | ${th.lastUpdate}</div></div>
+                ${isAdmin ? `<span class="op-btn" style="position:absolute; right:10px; bottom:10px;" onclick="event.stopPropagation(); deleteThread('${th.key}')">削除</span>` : ""}`;
+                container.appendChild(div);
+            });
         });
     }
 
@@ -284,13 +282,13 @@
         list.innerHTML = "";
         posts.forEach((p, i) => {
             const num = i + 1;
-            const div = document.createElement('div');
-            div.className = "res-item";
-            const nameClass = p.name === "三原" ? "name admin-name" : "name";
-            div.innerHTML = `<div class="info">${num} ：<span class="${nameClass}">${p.name}</span> ：${p.date} <b>${p.id}</b>${p.id === myId ? " <small>(自分)</small>":""}</div>
+            const sid = p.id.replace("ID:", "");
+            const isTargetBanned = !!fullBanList[sid];
+            const div = document.createElement('div'); div.className = "res-item"; div.id = `res-${num}`;
+            div.innerHTML = `<div class="info">${num} ：<span class="${p.name==='三原'?'name admin-name':'name'}">${p.name}</span> ：${p.date} <b>${p.id}</b></div>
                 <div class="res-ops">
                     <span class="op-btn" onclick="insertAnchor(${num})">返信</span>
-                    ${isAdmin ? `<span class="op-btn admin-op-btn" onclick="toggleBan('${p.id}')">出禁</span>` : ""}
+                    ${isAdmin ? `<span class="op-btn admin-op-btn ${isTargetBanned?'unban-btn':''}" onclick="toggleBan('${p.id}','${currentBoard}','${p.body}')">${isTargetBanned?'解除':'出禁'}</span>` : ""}
                     ${(p.id === myId || isAdmin) ? `<span class="op-btn" onclick="deletePost('${p.resKey}')">削除</span>` : ""}
                 </div>
                 ${p.img && !p.deleted ? `<img src="${p.img}" class="uploaded-img">` : ""}
@@ -299,6 +297,89 @@
         });
     }
 
+    // --- 出禁（BAN）処理 ---
+    function toggleBan(targetId, board, body) {
+        if (!isAdmin) return;
+        const sid = targetId.replace("ID:", "");
+        const ref = db.ref('ban_list/' + sid);
+        if (fullBanList[sid]) { if (confirm("出禁を解除しますか？")) ref.remove(); }
+        else { if (confirm(targetId + " を出禁にしますか？")) ref.set({ bannedAt: new Date().toLocaleString(), board, body: body.substring(0, 50), id: targetId }); }
+    }
+
+    function renderBanTable() {
+        const body = document.getElementById('ban-list-body'); body.innerHTML = "";
+        Object.keys(fullBanList).forEach(k => {
+            const b = fullBanList[k];
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${b.bannedAt}</td><td>${b.board}</td><td>${b.id}</td><td>${b.body}</td><td><button onclick="toggleBan('${b.id}')">解除</button></td>`;
+            body.appendChild(tr);
+        });
+    }
+
+    // --- 投稿処理 ---
+    function handleResInput() {
+        const area = document.getElementById('res-content'), btn = document.getElementById('btn-post-res'), label = document.getElementById('res-timer-label');
+        if (!area || !btn) return;
+        checkCharLimit('res-content', 'res-char-info');
+        if (area.value.length === 0) { btn.disabled = true; label.innerText = "本文を入力してください"; clearInterval(countdownInterval); countdownInterval = null; return; }
+        if (countdownInterval) return;
+        let sec = 3; btn.disabled = true;
+        countdownInterval = setInterval(() => {
+            sec--;
+            if (sec > 0) label.innerText = `あと${sec}秒で投稿可能`;
+            else { label.innerText = "投稿可能"; btn.disabled = false; clearInterval(countdownInterval); countdownInterval = null; }
+        }, 1000);
+    }
+
+    async function postResponse() {
+        if (isBanned) return alert("BANされている為投稿できません");
+        const area = document.getElementById('res-content'), name = isAdmin ? "三原" : (document.getElementById('res-name').value.trim() || DEFAULT_NAMES[currentBoard]);
+        const body = area.value, time = new Date().toLocaleString(), file = document.getElementById('res-file').files[0];
+        const save = (imgData) => {
+            db.ref('boards/' + currentBoard + '/' + currentThreadKey + '/posts').push({ name, date: time, id: myId, body, img: imgData || "", deleted: false });
+            db.ref('boards/' + currentBoard + '/' + currentThreadKey).update({ lastUpdate: time });
+            area.value = ""; if(document.getElementById('res-file')) document.getElementById('res-file').value = "";
+            handleResInput();
+        };
+        if(file) { const r = new FileReader(); r.onload = (e) => save(e.target.result); r.readAsDataURL(file); } else save("");
+    }
+
+    function showConfirm() {
+        if (isBanned) return alert("BANされている為投稿できません");
+        const title = document.getElementById('new-title').value, content = document.getElementById('new-content').value;
+        if(!title || !content) return alert("入力してください");
+        const file = document.getElementById('new-file').files[0];
+        const proceed = (img) => {
+            pendingThread = { title, content, img };
+            document.getElementById('index-view').classList.add('hidden');
+            document.getElementById('confirm-view').classList.remove('hidden');
+            let sec = 5; const bSub = document.getElementById('btn-submit-thread');
+            bSub.disabled = true; document.getElementById('timer-msg').innerText = `あと ${sec} 秒`;
+            const t = setInterval(() => {
+                sec--; document.getElementById('timer-msg').innerText = `あと ${sec} 秒`;
+                if(sec <= 0) { clearInterval(t); bSub.disabled = false; document.getElementById('timer-msg').innerText = "投稿できます"; }
+            }, 1000);
+        };
+        if(file) { const r = new FileReader(); r.onload = (e) => proceed(e.target.result); r.readAsDataURL(file); } else proceed("");
+    }
+
+    function submitNewThread() {
+        const name = isAdmin ? "三原" : (document.getElementById('new-name').value.trim() || DEFAULT_NAMES[currentBoard]);
+        const time = new Date().toLocaleString(), newRef = db.ref('boards/' + currentBoard).push();
+        newRef.set({ title: pendingThread.title, lastUpdate: time, posts: { "first": { name, date: time, id: myId, body: pendingThread.content, img: pendingThread.img || "", deleted: false } } })
+        .then(() => { document.getElementById('confirm-view').classList.add('hidden'); showThread(newRef.key, pendingThread.title); });
+    }
+
+    // --- ユーティリティ ---
+    function cancelNewThread() { document.getElementById('confirm-view').classList.add('hidden'); document.getElementById('index-view').classList.remove('hidden'); }
+    function deletePost(k) { if(confirm("消しますか？")) db.ref('boards/' + currentBoard + '/' + currentThreadKey + '/posts/' + k).update({ deleted: true }); }
+    function deleteThread(k) { if(confirm("削除しますか？")) db.ref('boards/' + currentBoard + '/' + k).remove(); }
+    function filterWords(t) { return t ? t.replace(/死ね|しね/g, "己の命を絶て").replace(/[まマ][んン][こコ]/g, "例の穴") : ""; }
+    function processText(t, d) {
+        if(d) return '<span class="deleted-text">削除されました。</span>';
+        let esc = t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return filterWords(esc).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" class="auto-link">$1</a>').replace(/&gt;&gt;(\d+)/g, '<span class="anchor" onclick="scrollToRes($1)">&gt;&gt;$1</span>');
+    }
     function updatePostArea() {
         document.getElementById('post-area-container').innerHTML = `
             <div class="post-form">
@@ -311,67 +392,8 @@
                 <div id="res-timer-label" style="font-size:0.75em; color:#666; margin-top:5px; text-align:center;">本文を入力してください</div>
             </div>`;
     }
-
-    function handleResInput() {
-        const area = document.getElementById('res-content'), btn = document.getElementById('btn-post-res'), label = document.getElementById('res-timer-label');
-        checkCharLimit('res-content', 'res-char-info');
-        if (!area.value) { btn.disabled = true; label.innerText = "本文を入力してください"; return; }
-        if (countdownInterval || isBanned) return;
-        let sec = 3; btn.disabled = true;
-        countdownInterval = setInterval(() => {
-            label.innerText = `あと${sec}秒で投稿可能`;
-            if (sec-- <= 0) { clearInterval(countdownInterval); countdownInterval = null; btn.disabled = false; label.innerText = "投稿可能"; }
-        }, 1000);
-    }
-
-    async function postResponse() {
-        if (isBanned) return alert("禁止されています。");
-        const name = isAdmin ? "三原" : (document.getElementById('res-name').value.trim() || DEFAULT_NAMES[currentBoard]);
-        const body = document.getElementById('res-content').value, time = new Date().toLocaleString(), file = document.getElementById('res-file').files[0];
-        const save = (img) => {
-            db.ref('boards/' + currentBoard + '/' + currentThreadKey + '/posts').push({ name, date: time, id: myId, body, img: img || "", deleted: false });
-            db.ref('boards/' + currentBoard + '/' + currentThreadKey).update({ lastUpdate: time });
-            updatePostArea();
-        };
-        if(file) { const r = new FileReader(); r.onload = (e) => save(e.target.result); r.readAsDataURL(file); } else save("");
-    }
-
-    function showConfirm() {
-        const title = document.getElementById('new-title').value, content = document.getElementById('new-content').value, file = document.getElementById('new-file').files[0];
-        if(!title || !content) return alert("入力してください");
-        const proceed = (img) => {
-            pendingThread = { title, content, img };
-            document.getElementById('index-view').classList.add('hidden');
-            document.getElementById('confirm-view').classList.remove('hidden');
-            let sec = 5; const b = document.getElementById('btn-submit-thread');
-            const t = setInterval(() => {
-                document.getElementById('timer-msg').innerText = `あと ${sec} 秒`;
-                if(sec-- <= 0) { clearInterval(t); b.disabled = (isBanned); document.getElementById('timer-msg').innerText = isBanned ? "投稿不可" : "投稿できます"; }
-            }, 1000);
-        };
-        if(file) { const r = new FileReader(); r.onload = (e) => proceed(e.target.result); r.readAsDataURL(file); } else proceed("");
-    }
-
-    function submitNewThread() {
-        if (isBanned) return alert("禁止されています。");
-        const name = isAdmin ? "三原" : (document.getElementById('new-name').value.trim() || DEFAULT_NAMES[currentBoard]);
-        const time = new Date().toLocaleString(), newRef = db.ref('boards/' + currentBoard).push();
-        newRef.set({ title: pendingThread.title, lastUpdate: time, posts: { "first": { name, date: time, id: myId, body: pendingThread.content, img: pendingThread.img || "", deleted: false } } })
-        .then(() => { document.getElementById('confirm-view').classList.add('hidden'); showThread(newRef.key, pendingThread.title); });
-    }
-
-    function cancelNewThread() { document.getElementById('confirm-view').classList.add('hidden'); document.getElementById('index-view').classList.remove('hidden'); }
-    function deletePost(k) { if(confirm("消しますか？")) db.ref('boards/' + currentBoard + '/' + currentThreadKey + '/posts/' + k).update({ deleted: true }); }
-    function deleteThread(k) { if(confirm("スレッドごと削除しますか？")) db.ref('boards/' + currentBoard + '/' + k).remove(); }
-    function filterWords(t) { return t ? t.replace(/死ね|しね/g, "己の命を絶て").replace(/[まマ][んン][こコ]/g, "例の穴") : ""; }
-    function processText(t, d) {
-        if(d) return '<span class="deleted-text">削除されました。</span>';
-        let esc = t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        return filterWords(esc).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" class="auto-link">$1</a>')
-                               .replace(/&gt;&gt;(\d+)/g, '<span class="anchor" onclick="scrollToRes($1)">&gt;&gt;$1</span>');
-    }
     function checkCharLimit(a, i) { const el = document.getElementById(a); if(el) document.getElementById(i).innerText = el.value.length + " / 3000"; }
-    function scrollToRes(n) { const t = document.getElementById(`res-${n}`); if(t) t.scrollIntoView({ behavior: 'smooth' }); }
+    function scrollToRes(n) { const target = document.getElementById(`res-${n}`); if(target) target.scrollIntoView({ behavior: 'smooth' }); }
     function scrollToBottom() { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }
     function insertAnchor(n) { const tx = document.getElementById('res-content'); if(tx) { tx.value = `>>${n}\n` + tx.value; handleResInput(); tx.focus(); } }
     function refreshThread() { db.ref('boards/' + currentBoard + '/' + currentThreadKey + '/posts').once('value', renderResponses); }
