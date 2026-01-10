@@ -198,9 +198,11 @@
                 container.innerHTML = "<div style='text-align:center; padding:20px; color:#666;'>まだスレッドがありません。</div>";
                 return;
             }
+            // lastUpdate（レス投稿時間）で降順ソート
             const threads = Object.keys(data).map(key => ({ ...data[key], key: key }))
                                   .sort((a, b) => new Date(b.lastUpdate).getTime() - new Date(a.lastUpdate).getTime());
-            threads.reverse().forEach(th => {
+            
+            threads.forEach(th => {
                 const posts = Object.values(th.posts || {});
                 const lastPost = posts[posts.length - 1] || { body: "" };
                 const div = document.createElement('div');
@@ -257,6 +259,7 @@
             db.ref('boards/' + currentBoard + '/' + currentThreadKey + '/posts').push({ 
                 name, date: time, id: myId, body, img: imgData || "", deleted: false 
             });
+            // スレッド一覧の並び順（あげ）のために親のlastUpdateも更新
             db.ref('boards/' + currentBoard + '/' + currentThreadKey).update({ lastUpdate: time });
             area.value = "";
             fileInput.value = "";
@@ -327,7 +330,14 @@
     function cancelNewThread() { document.getElementById('confirm-view').classList.add('hidden'); document.getElementById('index-view').classList.remove('hidden'); }
     function checkTitleLimit() { document.getElementById('title-char-info').innerText = document.getElementById('new-title').value.length + " / 50"; }
     function checkCharLimit(a, i) { document.getElementById(i).innerText = document.getElementById(a).value.length + " / 3000"; }
-    function filterWords(t) { return t ? t.replace(/(?<!パ)[ちチ][んン][こコぽポ]/g, "例の棒").replace(/[まマ][んン][こコ]/g, "例の穴") : ""; }
+    
+    function filterWords(t) { 
+        if(!t) return "";
+        return t.replace(/(?<!パ)[ちチ][んン][こコぽポ]/g, "例の棒")
+                .replace(/[まマ][んン][こコ]/g, "例の穴")
+                .replace(/死ね|しね/g, "己の命を絶て"); 
+    }
+
     function processText(t, d) {
         if(d) return '<span class="deleted-text">削除されました。</span>';
         let esc = t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
