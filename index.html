@@ -160,22 +160,28 @@
 
     function isBanned() { return !!bannedUsers[myId.replace("ID:","")]; }
 
-    // ボタンの見た目制御
     function validateBtnState(type) {
         const btn = document.getElementById(type === 'new' ? 'btn-to-confirm' : 'btn-post-res');
         const txt = document.getElementById(type === 'new' ? 'new-content' : 'res-content');
         if(!btn || !txt) return;
-        if (isBanned()) { btn.disabled = true; btn.innerText = "BANされている為、投稿出来ません"; }
-        else if (txt.value.trim() === "") { btn.disabled = true; btn.innerText = (type === 'new' ? "投稿前の注意へ" : "投稿"); }
-        else { btn.disabled = false; btn.innerText = (type === 'new' ? "投稿前の注意へ" : "投稿"); }
+        
+        const val = txt.value.trim();
+        if (isBanned()) { 
+            btn.disabled = true; btn.innerText = "BANされている為、投稿出来ません"; 
+        } else if (val === "") { 
+            btn.disabled = true; btn.innerText = (type === 'new' ? "投稿前の注意へ" : "投稿"); 
+        } else if (val.length > 3000) {
+            btn.disabled = true; btn.innerText = "3000文字以内で入力してください";
+        } else { 
+            btn.disabled = false; btn.innerText = (type === 'new' ? "投稿前の注意へ" : "投稿"); 
+        }
     }
 
-    // ★重要：1回押すとカウントダウンが始まり、終わると自動で投稿する方式
     function startPostSequence() {
         if (isBanned()) return;
         const btn = document.getElementById('btn-post-res');
         const body = document.getElementById('res-content').value.trim();
-        if(!body) return;
+        if(!body || body.length > 3000) return;
 
         btn.disabled = true;
         let s = 3;
@@ -185,7 +191,7 @@
             s--;
             if (s <= 0) {
                 clearInterval(timer);
-                executePost(); // 自動で投稿実行
+                executePost(); 
             } else {
                 btn.innerText = `投稿中... (${s})`;
             }
@@ -204,13 +210,12 @@
                 body: body, img: img || "", timestamp: firebase.database.ServerValue.TIMESTAMP, deleted: false
             });
             db.ref('boards/' + currentBoard + '/' + currentThreadKey).update({ lastUpdate: new Date().toLocaleString() });
-            updatePostArea(); // フォームリセット
+            updatePostArea(); 
         };
 
         if(file) { const r = new FileReader(); r.onload = (e) => send(e.target.result); r.readAsDataURL(file); } else send("");
     }
 
-    // テキスト処理（リンク化）
     function processText(t) {
         if(!t) return "";
         return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
@@ -218,7 +223,6 @@
                 .replace(/&gt;&gt;(\d+)/g, '<span class="auto-link" onclick="scrollToRes($1)">&gt;&gt;$1</span>');
     }
 
-    // --- 各種機能 ---
     function renderPortal() {
         const p = document.getElementById('board-portal'); p.innerHTML = "";
         Object.keys(BOARD_DEFAULTS).forEach(n => {
@@ -262,7 +266,9 @@
     function renderResponses(snap) {
         const list = document.getElementById('res-list'); list.innerHTML = "";
         const data = snap.val() || {};
-        Object.entries(data).sort((a,b)=>a[1].timestamp - b[1].timestamp).forEach(([k, p], i) => {
+        const resEntries = Object.entries(data).sort((a,b)=>a[1].timestamp - b[1].timestamp);
+
+        resEntries.forEach(([k, p], i) => {
             const num = i + 1;
             const div = document.createElement('div'); div.className = "res-item"; div.id = `res-${num}`;
             div.innerHTML = `<div class="info">${num}：<span class="${p.name==='三原'?'name admin-name':'name'}">${p.name}</span>：${p.date} <b>${p.id}</b></div>
@@ -275,13 +281,32 @@
                 </div>`;
             list.appendChild(div);
         });
+
+        const resCount = resEntries.length;
+        const postContainer = document.getElementById('post-area-container');
+        if (resCount >= 500 && postContainer) {
+            postContainer.innerHTML = `
+                <div class="post-form" style="text-align:center;">
+                    <strong style="color:red;">500レスに達した為新たな書き込みが出来ません</strong><br>
+                    <button class="nav-btn" style="width:100%; background:#999; margin-top:10px;" disabled>投稿</button>
+                </div>`;
+        }
     }
 
     function renderIndex() {
         db.ref('boards/' + currentBoard).on('value', (snap) => {
             const container = document.getElementById('thread-list-container'); container.innerHTML = "";
             const data = snap.val() || {};
+            const now = Date.now();
+            const twelveHours = 12 * 60 * 60 * 1000;
+
             Object.keys(data).sort((a,b)=>new Date(data[b].lastUpdate)-new Date(data[a].lastUpdate)).forEach(k => {
+                const threadUpdateDate = new Date(data[k].lastUpdate).getTime();
+                if (now - threadUpdateDate > twelveHours) {
+                    db.ref('boards/' + currentBoard + '/' + k).remove();
+                    return; 
+                }
+
                 const div = document.createElement('div'); div.className = "thread-link";
                 div.onclick = () => showThread(k, data[k].title);
                 div.innerHTML = `<strong>${data[k].title}</strong><br><small>${data[k].lastUpdate}</small>
@@ -298,11 +323,11 @@
         if(bannedUsers[sid]) { if(confirm("解除？")) db.ref('ban_list/'+sid).remove(); }
         else { if(confirm("出禁？")) db.ref('ban_list/'+sid).set({id:tid, date:new Date().toLocaleString(), content:summary}); }
     }
-    function insertAnchor(n) { const tx = document.getElementById('res-content'); tx.value = `>>${n}\n` + tx.value; tx.focus(); validateBtnState('res'); }
+    function insertAnchor(n) { const tx = document.getElementById('res-content'); if(tx) { tx.value = `>>${n}\n` + tx.value; tx.focus(); validateBtnState('res'); } }
     function scrollToRes(n) { const t = document.getElementById(`res-${n}`); if(t) t.scrollIntoView({ behavior: 'smooth' }); }
     function login() { auth.signInWithEmailAndPassword(document.getElementById('admin-email').value, document.getElementById('admin-pass').value).catch(e=>alert("失敗")); }
     function logout() { auth.signOut(); }
-    function showConfirm() { if(isBanned() || !document.getElementById('new-content').value.trim()) return; hideAll(); document.getElementById('confirm-view').classList.remove('hidden'); 
+    function showConfirm() { if(isBanned() || !document.getElementById('new-content').value.trim() || document.getElementById('new-content').value.length > 3000) return; hideAll(); document.getElementById('confirm-view').classList.remove('hidden'); 
         let s = 5; const b = document.getElementById('btn-submit-thread'); b.disabled = true; 
         const it = setInterval(() => { s--; b.innerText = `同意して作成 (${s})`; if(s<=0){ clearInterval(it); b.disabled = false; b.innerText = "同意して作成"; } }, 1000);
     }
