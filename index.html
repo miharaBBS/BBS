@@ -332,13 +332,38 @@
         const it = setInterval(() => { s--; b.innerText = `同意して作成 (${s})`; if(s<=0){ clearInterval(it); b.disabled = false; b.innerText = "同意して作成"; } }, 1000);
     }
     function submitNewThread() {
-        const title = document.getElementById('new-title').value.trim(), body = document.getElementById('new-content').value.trim(), name = document.getElementById('new-name').value || NAME_DEFAULTS[currentBoard];
+        const title = document.getElementById('new-title').value.trim();
+        const body = document.getElementById('new-content').value.trim();
+        const name = document.getElementById('new-name').value || NAME_DEFAULTS[currentBoard];
         localStorage.setItem('last_name', name);
-        const ref = db.ref('boards/'+currentBoard).push();
-        ref.set({title, lastUpdate: new Date().toLocaleString()}).then(() => {
-            ref.child('posts').push({name: isAdmin?"三原":name, date:new Date().toLocaleString(), id:myId, body, timestamp: firebase.database.ServerValue.TIMESTAMP, deleted:false});
-            document.getElementById('new-title').value = ""; document.getElementById('new-content').value = ""; showThread(ref.key, title);
-        });
+        const file = document.getElementById('new-file').files[0];
+
+        const send = (img) => {
+            const ref = db.ref('boards/'+currentBoard).push();
+            ref.set({title, lastUpdate: new Date().toLocaleString()}).then(() => {
+                ref.child('posts').push({
+                    name: isAdmin ? "三原" : name,
+                    date: new Date().toLocaleString(),
+                    id: myId,
+                    body: body,
+                    img: img || "",
+                    timestamp: firebase.database.ServerValue.TIMESTAMP,
+                    deleted: false
+                });
+                document.getElementById('new-title').value = "";
+                document.getElementById('new-content').value = "";
+                document.getElementById('new-file').value = "";
+                showThread(ref.key, title);
+            });
+        };
+
+        if (file) {
+            const r = new FileReader();
+            r.onload = (e) => send(e.target.result);
+            r.readAsDataURL(file);
+        } else {
+            send("");
+        }
     }
     function cancelNewThread() { openBoard(currentBoard); }
     function hideAll() { ['portal-view', 'index-view', 'thread-view', 'confirm-view', 'page-footer'].forEach(id => { const el = document.getElementById(id); if(el) el.classList.add('hidden'); }); }
